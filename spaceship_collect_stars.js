@@ -41,7 +41,7 @@ const spaceship = {
     y: 0,
     width: 64,
     height: 64,
-    speed: 5,
+    speed: 8,
     dx: 0,
     dy: 0,
     smoothX: 0,
@@ -89,6 +89,65 @@ const maxOffset = spaceship.speed * 20; // Max offset for smooth movement
 const background = new Image();
 background.src = './img_file/background.png';
 
+// Définition de la classe Planète
+class Planet {
+    constructor(x, y, textureSrc, size, gravity, orientation, rot_speed) {
+        this.x = x;
+        this.y = y;
+        this.size = size;
+        this.gravity = gravity;
+        this.orientation = orientation;
+        this.rot_speed = rot_speed;
+        this.image = new Image();
+        this.image.src = textureSrc;
+    }
+
+    updateRotation() {
+        this.orientation += this.rot_speed;
+    }
+
+    draw(ctx, camera) {
+        const screenX = this.x - camera.smoothX + canvas.width / 2;
+        const screenY = this.y - camera.smoothY + canvas.height / 2;
+    
+        ctx.save();
+        ctx.translate(screenX, screenY);
+        ctx.rotate(this.orientation);
+    
+        // Vérifier que l'image est bien chargée avant de dessiner
+        if (this.image.complete && this.image.naturalWidth !== 0) {
+            // Vérifier que la taille est bien prise en compte
+            const width = this.size || this.image.width;
+            const height = this.size || this.image.height;
+    
+            ctx.drawImage(this.image, -width / 2, -height / 2, width, height);
+        } else {
+            console.warn("L'image de la planète n'est pas encore chargée !");
+        }
+    
+        ctx.restore();
+    }
+    
+}
+
+// Liste des planètes créées
+const planets = [
+    new Planet(1500, 1300, './img_file/planet1.png', 500, 9.81, 0, 0.01),
+    new Planet(-600, -200, './img_file/planet2.png', 150, 5, Math.PI / 4, 0.02)
+];
+
+// Mettre à jour la rotation des planètes
+function updatePlanets() {
+    planets.forEach(planet => planet.updateRotation());
+}
+
+// Dessiner toutes les planètes
+function drawPlanets(ctx, camera) {
+    planets.forEach(planet => planet.draw(ctx, camera));
+}
+
+
+
 // Génération des étoiles
 function createStar() {
     const star = {
@@ -98,6 +157,8 @@ function createStar() {
     };
     stars.push(star);
 }
+
+// STARS
 
 for (let i = 0; i < starNumber; i++) {
     createStar();
@@ -123,8 +184,9 @@ function update() {
 // Fonction d'exécution du jeu
 function staticGame() {
     drawBackground();
-    drawSpaceship();
     drawStars();
+    drawPlanets(ctx, camera);
+    drawSpaceship();
     drawScore();
     drawCameraCoordinates();
 }
@@ -132,11 +194,14 @@ function staticGame() {
 // Fonction d'exécution du jeu
 function runGame() {
     updateCamera();
-    drawBackground();
-    drawSpaceship();
-    drawStars();
     updateSpaceship();
+    updatePlanets();
     checkCollision();
+    applyGravity(spaceship);
+    drawStars();
+    drawBackground();
+    drawPlanets(ctx, camera);
+    drawSpaceship();
     drawScore();
     drawCameraCoordinates();
 }
@@ -205,14 +270,87 @@ function drawStars() {
     });
 }
 
-// Mettre à jour la position du vaisseau
-function updateSpaceship() {
-    spaceship.x += spaceship.dx;
-    spaceship.y += spaceship.dy;
+// GRAVITY !!!!!!
+function applyGravity(spaceship) {
+    let totalGravityX = 0;
+    let totalGravityY = 0;
 
+    for (const planet of planets) {
+        // Prendre en compte l'offset du vaisseau
+        const spaceshipActualX = spaceship.x + spaceship.offsetX;
+        const spaceshipActualY = spaceship.y + spaceship.offsetY;
+
+        const dx = planet.x - spaceshipActualX;
+        const dy = planet.y - spaceshipActualY;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+        const planetRadius = planet.size / 2;
+        const spaceshipRadius = spaceship.width / 2;
+        const minDistance = planetRadius + spaceshipRadius; // Distance où le contact est établi
+        const maxGravityDistance = minDistance + planet.gravity * 500; // Distance maximale d'effet de la gravité
+
+        if (distance > minDistance && distance < maxGravityDistance) {
+            // Appliquer une gravité proportionnelle à la distance
+            const gravityForce = planet.gravity / (distance * 0.1);
+            totalGravityX += (dx / distance) * gravityForce;
+            totalGravityY += (dy / distance) * gravityForce;
+        } else if (distance <= minDistance) {
+            // Arrêter le vaisseau à la surface de la planète en tenant compte de l'offset
+            const angle = Math.atan2(dy, dx);
+            spaceship.x = planet.x - Math.cos(angle) * minDistance - spaceship.offsetX;
+            spaceship.y = planet.y - Math.sin(angle) * minDistance - spaceship.offsetY;
+            spaceship.dx *= 0.5; // Réduction progressive de la vitesse
+            spaceship.dy *= 0.5;
+            if (Math.abs(spaceship.dx) < 0.1 && Math.abs(spaceship.dy) < 0.1) {
+                spaceship.dx = 0;
+                spaceship.dy = 0;
+            }
+            return; // Sortie immédiate pour éviter d'autres forces gravitationnelles
+        }
+    }
+
+    // Appliquer la force calculée sur le vaisseau
+    spaceship.dx += totalGravityX;
+    spaceship.dy += totalGravityY;
+}
+
+
+
+
+
+const collisionObjects = [/*
+    { x: -600, y: -200, width: 150, height: 150 }, // Exemple d'un objet de collision
+    { x: 500, y: 300, width: 100, height: 100 }*/
+];
+
+function isColliding(newX, newY) {
+    // Vérifier la collision avec les objets statiques (si présents)
+    for (let obj of collisionObjects) {
+        if (
+            newX < obj.x + obj.width &&
+            newX + spaceship.width > obj.x &&
+            newY < obj.y + obj.height &&
+            newY + spaceship.height > obj.y
+        ) {
+            return true; // Collision détectée
+        }
+    }
+
+    return false; // Pas de collision
+}
+
+function updateSpaceship() {
+    let newX = spaceship.x + spaceship.dx;
+    let newY = spaceship.y + spaceship.dy;
+
+    // Vérifier la collision avant de déplacer
+    if (!isColliding(newX, spaceship.y)) {
+        spaceship.x = newX;
+    }
+    if (!isColliding(spaceship.x, newY)) {
+        spaceship.y = newY;
+    }
 
     const smoothingFactor = 0.02;
-    // Mise à jour des cibles d'offset pour un décalage fluide
     if (spaceship.dx !== 0 || spaceship.dy !== 0) {
         const magnitude = Math.sqrt(spaceship.dx ** 2 + spaceship.dy ** 2);
         spaceship.targetOffsetX = (spaceship.dx / magnitude) * maxOffset;
@@ -221,17 +359,16 @@ function updateSpaceship() {
         spaceship.targetOffsetX = 0;
         spaceship.targetOffsetY = 0;
     }
-
-    // Ajustement fluide vers les cibles d'offset
-    spaceship.offsetX += (spaceship.targetOffsetX - spaceship.offsetX) * smoothingFactor;
-    spaceship.offsetY += (spaceship.targetOffsetY - spaceship.offsetY) * smoothingFactor;
-
-
-    // Limites de l'espace simulé
+    if (!isColliding(newX, spaceship.y)) {
+        spaceship.offsetX += (spaceship.targetOffsetX - spaceship.offsetX) * smoothingFactor;
+    }
+    if (!isColliding(spaceship.x, newY)) {
+        spaceship.offsetY += (spaceship.targetOffsetY - spaceship.offsetY) * smoothingFactor;
+    }
+    
     spaceship.x = Math.max(-renderSimulation, Math.min(renderSimulation, spaceship.x));
     spaceship.y = Math.max(-renderSimulation, Math.min(renderSimulation, spaceship.y));
 
-    // Mise à jour de la caméra pour suivre le vaisseau avec fluidité
     camera.x = spaceship.x - canvas.width / 2;
     camera.y = spaceship.y - canvas.height / 2;
 }
@@ -266,6 +403,7 @@ function drawCameraCoordinates() {
     ctx.textAlign = 'right';
     ctx.fillText(`Camera: (${Math.round(camera.smoothX)}, ${Math.round(camera.smoothY)})`, canvas.width - 10, 30);
     ctx.fillText(`Offset Ship: (${Math.round(spaceship.offsetX)}, ${Math.round(spaceship.offsetY)})`, canvas.width - 10, 60);
+    ctx.fillText(`Mouse: (${Math.round(mouseX + camera.smoothX)}, ${Math.round(mouseY + camera.smoothY)})`, canvas.width - 10, 90);
 }
 
 // Afficher le menu principal
@@ -359,3 +497,16 @@ document.addEventListener('keyup', keyUp);
 background.onload = () => {
     update();
 };
+
+let mouseX = 0;
+let mouseY = 0;
+
+canvas.addEventListener('mousemove', (event) => {
+    const rect = canvas.getBoundingClientRect();
+    const centerX = rect.width / 2;
+    const centerY = rect.height / 2;
+
+    // Conversion pour que (0,0) soit au centre du canvas
+    mouseX = event.clientX - rect.left - centerX;
+    mouseY = event.clientY - rect.top - centerY;
+});
