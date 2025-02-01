@@ -1,3 +1,5 @@
+// INITIALISATION --------------------------------------------------
+
 // Initialisation du canevas
 const canvas = document.createElement('canvas');
 const ctx = canvas.getContext('2d');
@@ -6,28 +8,6 @@ document.body.appendChild(canvas);
 function resizeCanvas() {
     canvas.width = Math.max(800, window.innerWidth);
     canvas.height = Math.max(600, window.innerHeight);
-}
-
-// Fonction pour dessiner une croix rouge au centre
-function drawRedCross() {
-    const centerX = canvas.width / 2;
-    const centerY = canvas.height / 2;
-    const crossSize = 20; // Taille de la croix en pixels
-
-    ctx.strokeStyle = 'red'; // Couleur de la croix
-    ctx.lineWidth = 2; // Épaisseur de la croix
-
-    // Ligne horizontale
-    ctx.beginPath();
-    ctx.moveTo(centerX - crossSize / 2, centerY);
-    ctx.lineTo(centerX + crossSize / 2, centerY);
-    ctx.stroke();
-
-    // Ligne verticale
-    ctx.beginPath();
-    ctx.moveTo(centerX, centerY - crossSize / 2);
-    ctx.lineTo(centerX, centerY + crossSize / 2);
-    ctx.stroke();
 }
 
 resizeCanvas();
@@ -89,6 +69,23 @@ const maxOffset = spaceship.speed * 20; // Max offset for smooth movement
 const background = new Image();
 background.src = './img_file/background.png';
 
+
+// Génération des étoiles
+function createStar() {
+    const star = {
+        x: Math.random() * (renderSimulation * 2) - renderSimulation,
+        y: Math.random() * (renderSimulation * 2) - renderSimulation,
+        size: starSize
+    };
+    stars.push(star);
+}
+
+// STARS
+
+for (let i = 0; i < starNumber; i++) {
+    createStar();
+}
+
 // Définition de la classe Planète
 class Planet {
     constructor(x, y, textureSrc, size, gravity, orientation, rot_speed) {
@@ -136,74 +133,13 @@ const planets = [
     new Planet(-600, -200, './img_file/planet2.png', 150, 5, Math.PI / 4, 0.02)
 ];
 
+
+// UPDATE ----------------------------------------------------
+
+
 // Mettre à jour la rotation des planètes
 function updatePlanets() {
     planets.forEach(planet => planet.updateRotation());
-}
-
-// Dessiner toutes les planètes
-function drawPlanets(ctx, camera) {
-    planets.forEach(planet => planet.draw(ctx, camera));
-}
-
-
-
-// Génération des étoiles
-function createStar() {
-    const star = {
-        x: Math.random() * (renderSimulation * 2) - renderSimulation,
-        y: Math.random() * (renderSimulation * 2) - renderSimulation,
-        size: starSize
-    };
-    stars.push(star);
-}
-
-// STARS
-
-for (let i = 0; i < starNumber; i++) {
-    createStar();
-}
-
-// Fonction principale de mise à jour
-function update() {
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-    if (!gameStarted) {
-        showMainMenu();
-    } else if (gamePaused) {
-        staticGame();
-        showPauseMenu();
-    } else {
-        runGame();
-    }
-    // drawRedCross();// To center object
-    currentTime = performance.now(); // Initialisation du temps
-    requestAnimationFrame(update);
-}
-
-// Fonction d'exécution du jeu
-function staticGame() {
-    drawBackground();
-    drawStars();
-    drawPlanets(ctx, camera);
-    drawSpaceship();
-    drawScore();
-    drawCameraCoordinates();
-}
-
-// Fonction d'exécution du jeu
-function runGame() {
-    updateCamera();
-    updateSpaceship();
-    updatePlanets();
-    checkCollision();
-    applyGravity(spaceship);
-    drawStars();
-    drawBackground();
-    drawPlanets(ctx, camera);
-    drawSpaceship();
-    drawScore();
-    drawCameraCoordinates();
 }
 
 // Mettre à jour la caméra pour suivre le vaisseau
@@ -214,6 +150,147 @@ function updateCamera() {
     camera.smoothX += (spaceship.x - camera.smoothX) * smoothingFactor;
     camera.smoothY += (spaceship.y - camera.smoothY) * smoothingFactor;
 }
+
+function updateSpaceship() {
+    let newX = spaceship.x + spaceship.dx;
+    let newY = spaceship.y + spaceship.dy;
+
+    // Vérifier la collision avant de déplacer
+    if (!isColliding(newX, spaceship.y)) {
+        spaceship.x = newX;
+    }
+    if (!isColliding(spaceship.x, newY)) {
+        spaceship.y = newY;
+    }
+
+    const smoothingFactor = 0.02;
+    if (spaceship.dx !== 0 || spaceship.dy !== 0) {
+        const magnitude = Math.sqrt(spaceship.dx ** 2 + spaceship.dy ** 2);
+        spaceship.targetOffsetX = (spaceship.dx / magnitude) * maxOffset;
+        spaceship.targetOffsetY = (spaceship.dy / magnitude) * maxOffset;
+    } else {
+        spaceship.targetOffsetX = 0;
+        spaceship.targetOffsetY = 0;
+    }
+    if (!isColliding(newX, spaceship.y)) {
+        spaceship.offsetX += (spaceship.targetOffsetX - spaceship.offsetX) * smoothingFactor;
+    }
+    if (!isColliding(spaceship.x, newY)) {
+        spaceship.offsetY += (spaceship.targetOffsetY - spaceship.offsetY) * smoothingFactor;
+    }
+    
+    spaceship.x = Math.max(-renderSimulation, Math.min(renderSimulation, spaceship.x));
+    spaceship.y = Math.max(-renderSimulation, Math.min(renderSimulation, spaceship.y));
+
+    camera.x = spaceship.x - canvas.width / 2;
+    camera.y = spaceship.y - canvas.height / 2;
+}
+
+function updateDirection() {
+    spaceship.dx = 0;
+    spaceship.dy = 0;
+    let horizontal = 0;
+    let vertical = 0;
+
+    if (keys.ArrowRight || keys.KeyD) horizontal += 1;
+    if (keys.ArrowLeft || keys.KeyA) horizontal -= 1;
+    if (keys.ArrowUp || keys.KeyW) vertical -= 1;
+    if (keys.ArrowDown || keys.KeyS) vertical += 1;
+
+    const magnitude = Math.sqrt(horizontal * horizontal + vertical * vertical);
+
+    if (magnitude > 0) {
+        spaceship.dx = (horizontal / magnitude) * spaceship.speed;
+        spaceship.dy = (vertical / magnitude) * spaceship.speed;
+    }
+}
+
+
+// PHYSIQUE ----------------------------------------------------
+
+// GRAVITY !!!!!!
+function applyGravity(spaceship) {
+    let totalGravityX = 0;
+    let totalGravityY = 0;
+
+    for (const planet of planets) {
+        // Prendre en compte l'offset du vaisseau
+        const spaceshipActualX = spaceship.x + spaceship.offsetX;
+        const spaceshipActualY = spaceship.y + spaceship.offsetY;
+
+        const dx = planet.x - spaceshipActualX;
+        const dy = planet.y - spaceshipActualY;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+        const planetRadius = planet.size / 2;
+        const spaceshipRadius = spaceship.width / 2;
+        const minDistance = planetRadius + spaceshipRadius; // Distance où le contact est établi
+        const maxGravityDistance = minDistance + planet.gravity * 500; // Distance maximale d'effet de la gravité
+
+        if (distance > minDistance && distance < maxGravityDistance) {
+            // Appliquer une gravité proportionnelle à la distance
+            const gravityForce = planet.gravity / (distance * 0.1);
+            totalGravityX += (dx / distance) * gravityForce;
+            totalGravityY += (dy / distance) * gravityForce;
+        } else if (distance <= minDistance) {
+            // Arrêter le vaisseau à la surface de la planète en tenant compte de l'offset
+            const angle = Math.atan2(dy, dx);
+            spaceship.x = planet.x - Math.cos(angle) * minDistance - spaceship.offsetX;
+            spaceship.y = planet.y - Math.sin(angle) * minDistance - spaceship.offsetY;
+            spaceship.dx *= 0.5; // Réduction progressive de la vitesse
+            spaceship.dy *= 0.5;
+            if (Math.abs(spaceship.dx) < 0.1 && Math.abs(spaceship.dy) < 0.1) {
+                spaceship.dx = 0;
+                spaceship.dy = 0;
+            }
+            return; // Sortie immédiate pour éviter d'autres forces gravitationnelles
+        }
+    }
+
+    // Appliquer la force calculée sur le vaisseau
+    spaceship.dx += totalGravityX;
+    spaceship.dy += totalGravityY;
+}
+
+
+const collisionObjects = [/*
+    { x: -600, y: -200, width: 150, height: 150 }, // Exemple d'un objet de collision
+    { x: 500, y: 300, width: 100, height: 100 }*/
+];
+
+function isColliding(newX, newY) {
+    // Vérifier la collision avec les objets statiques (si présents)
+    for (let obj of collisionObjects) {
+        if (
+            newX < obj.x + obj.width &&
+            newX + spaceship.width > obj.x &&
+            newY < obj.y + obj.height &&
+            newY + spaceship.height > obj.y
+        ) {
+            return true; // Collision détectée
+        }
+    }
+
+    return false; // Pas de collision
+}
+
+// Vérifier les collisions
+function checkCollision() {
+    stars.forEach((star, index) => {
+        const dx = Math.abs(spaceship.x - spaceship.offsetX*1.5 - star.x);
+        const dy = Math.abs(spaceship.y - spaceship.offsetY*1.5 - star.y);
+        const distance = Math.sqrt(dx * dx + dy * dy);
+
+        if (distance < (star.size + spaceship.width / 2)) {
+            stars.splice(index, 1);
+            score++;
+            createStar();
+        }
+    });
+}
+
+
+
+// DRAW ----------------------------------------------------
 
 // Dessiner l'arrière-plan répétitif
 function drawBackground() {
@@ -270,122 +347,31 @@ function drawStars() {
     });
 }
 
-// GRAVITY !!!!!!
-function applyGravity(spaceship) {
-    let totalGravityX = 0;
-    let totalGravityY = 0;
-
-    for (const planet of planets) {
-        // Prendre en compte l'offset du vaisseau
-        const spaceshipActualX = spaceship.x + spaceship.offsetX;
-        const spaceshipActualY = spaceship.y + spaceship.offsetY;
-
-        const dx = planet.x - spaceshipActualX;
-        const dy = planet.y - spaceshipActualY;
-        const distance = Math.sqrt(dx * dx + dy * dy);
-        const planetRadius = planet.size / 2;
-        const spaceshipRadius = spaceship.width / 2;
-        const minDistance = planetRadius + spaceshipRadius; // Distance où le contact est établi
-        const maxGravityDistance = minDistance + planet.gravity * 500; // Distance maximale d'effet de la gravité
-
-        if (distance > minDistance && distance < maxGravityDistance) {
-            // Appliquer une gravité proportionnelle à la distance
-            const gravityForce = planet.gravity / (distance * 0.1);
-            totalGravityX += (dx / distance) * gravityForce;
-            totalGravityY += (dy / distance) * gravityForce;
-        } else if (distance <= minDistance) {
-            // Arrêter le vaisseau à la surface de la planète en tenant compte de l'offset
-            const angle = Math.atan2(dy, dx);
-            spaceship.x = planet.x - Math.cos(angle) * minDistance - spaceship.offsetX;
-            spaceship.y = planet.y - Math.sin(angle) * minDistance - spaceship.offsetY;
-            spaceship.dx *= 0.5; // Réduction progressive de la vitesse
-            spaceship.dy *= 0.5;
-            if (Math.abs(spaceship.dx) < 0.1 && Math.abs(spaceship.dy) < 0.1) {
-                spaceship.dx = 0;
-                spaceship.dy = 0;
-            }
-            return; // Sortie immédiate pour éviter d'autres forces gravitationnelles
-        }
-    }
-
-    // Appliquer la force calculée sur le vaisseau
-    spaceship.dx += totalGravityX;
-    spaceship.dy += totalGravityY;
+// Dessiner toutes les planètes
+function drawPlanets(ctx, camera) {
+    planets.forEach(planet => planet.draw(ctx, camera));
 }
 
+// Fonction pour dessiner une croix rouge au centre
+function drawRedCross() {
+    const centerX = canvas.width / 2;
+    const centerY = canvas.height / 2;
+    const crossSize = 20; // Taille de la croix en pixels
 
+    ctx.strokeStyle = 'red'; // Couleur de la croix
+    ctx.lineWidth = 2; // Épaisseur de la croix
 
+    // Ligne horizontale
+    ctx.beginPath();
+    ctx.moveTo(centerX - crossSize / 2, centerY);
+    ctx.lineTo(centerX + crossSize / 2, centerY);
+    ctx.stroke();
 
-
-const collisionObjects = [/*
-    { x: -600, y: -200, width: 150, height: 150 }, // Exemple d'un objet de collision
-    { x: 500, y: 300, width: 100, height: 100 }*/
-];
-
-function isColliding(newX, newY) {
-    // Vérifier la collision avec les objets statiques (si présents)
-    for (let obj of collisionObjects) {
-        if (
-            newX < obj.x + obj.width &&
-            newX + spaceship.width > obj.x &&
-            newY < obj.y + obj.height &&
-            newY + spaceship.height > obj.y
-        ) {
-            return true; // Collision détectée
-        }
-    }
-
-    return false; // Pas de collision
-}
-
-function updateSpaceship() {
-    let newX = spaceship.x + spaceship.dx;
-    let newY = spaceship.y + spaceship.dy;
-
-    // Vérifier la collision avant de déplacer
-    if (!isColliding(newX, spaceship.y)) {
-        spaceship.x = newX;
-    }
-    if (!isColliding(spaceship.x, newY)) {
-        spaceship.y = newY;
-    }
-
-    const smoothingFactor = 0.02;
-    if (spaceship.dx !== 0 || spaceship.dy !== 0) {
-        const magnitude = Math.sqrt(spaceship.dx ** 2 + spaceship.dy ** 2);
-        spaceship.targetOffsetX = (spaceship.dx / magnitude) * maxOffset;
-        spaceship.targetOffsetY = (spaceship.dy / magnitude) * maxOffset;
-    } else {
-        spaceship.targetOffsetX = 0;
-        spaceship.targetOffsetY = 0;
-    }
-    if (!isColliding(newX, spaceship.y)) {
-        spaceship.offsetX += (spaceship.targetOffsetX - spaceship.offsetX) * smoothingFactor;
-    }
-    if (!isColliding(spaceship.x, newY)) {
-        spaceship.offsetY += (spaceship.targetOffsetY - spaceship.offsetY) * smoothingFactor;
-    }
-    
-    spaceship.x = Math.max(-renderSimulation, Math.min(renderSimulation, spaceship.x));
-    spaceship.y = Math.max(-renderSimulation, Math.min(renderSimulation, spaceship.y));
-
-    camera.x = spaceship.x - canvas.width / 2;
-    camera.y = spaceship.y - canvas.height / 2;
-}
-
-// Vérifier les collisions
-function checkCollision() {
-    stars.forEach((star, index) => {
-        const dx = Math.abs(spaceship.x - spaceship.offsetX*1.5 - star.x);
-        const dy = Math.abs(spaceship.y - spaceship.offsetY*1.5 - star.y);
-        const distance = Math.sqrt(dx * dx + dy * dy);
-
-        if (distance < (star.size + spaceship.width / 2)) {
-            stars.splice(index, 1);
-            score++;
-            createStar();
-        }
-    });
+    // Ligne verticale
+    ctx.beginPath();
+    ctx.moveTo(centerX, centerY - crossSize / 2);
+    ctx.lineTo(centerX, centerY + crossSize / 2);
+    ctx.stroke();
 }
 
 // Dessiner le score
@@ -431,6 +417,26 @@ function showPauseMenu() {
     ctx.fillText('Press T to Resume', canvas.width / 2, canvas.height / 2);
 }
 
+
+// MAIN ----------------------------------------------------
+
+// Fonction principale de mise à jour
+function update() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    if (!gameStarted) {
+        showMainMenu();
+    } else if (gamePaused) {
+        staticGame();
+        showPauseMenu();
+    } else {
+        runGame();
+    }
+    // drawRedCross();// To center object
+    currentTime = performance.now(); // Initialisation du temps
+    requestAnimationFrame(update);
+}
+
 // Démarrer le jeu
 function startGame() {
     gameStarted = true;
@@ -439,6 +445,34 @@ function startGame() {
     camera.x = spaceship.x;
     camera.y = spaceship.y;
 }
+
+// Fonction d'exécution du jeu
+function staticGame() {
+    drawBackground();
+    drawStars();
+    drawPlanets(ctx, camera);
+    drawSpaceship();
+    drawScore();
+    drawCameraCoordinates();
+}
+
+// Fonction d'exécution du jeu
+function runGame() {
+    updateCamera();
+    updateSpaceship();
+    updatePlanets();
+    checkCollision();
+    applyGravity(spaceship);
+    drawBackground();
+    drawStars();
+    drawPlanets(ctx, camera);
+    drawSpaceship();
+    drawScore();
+    drawCameraCoordinates();
+}
+
+
+// EVENT --------------------------------------------------
 
 // Gestion des entrées clavier
 const keys = {
@@ -466,25 +500,6 @@ function keyUp(e) {
     updateDirection();
 }
 
-function updateDirection() {
-    spaceship.dx = 0;
-    spaceship.dy = 0;
-    let horizontal = 0;
-    let vertical = 0;
-
-    if (keys.ArrowRight || keys.KeyD) horizontal += 1;
-    if (keys.ArrowLeft || keys.KeyA) horizontal -= 1;
-    if (keys.ArrowUp || keys.KeyW) vertical -= 1;
-    if (keys.ArrowDown || keys.KeyS) vertical += 1;
-
-    const magnitude = Math.sqrt(horizontal * horizontal + vertical * vertical);
-
-    if (magnitude > 0) {
-        spaceship.dx = (horizontal / magnitude) * spaceship.speed;
-        spaceship.dy = (vertical / magnitude) * spaceship.speed;
-    }
-}
-
 function togglePause() {
     gamePaused = !gamePaused;
 }
@@ -510,3 +525,4 @@ canvas.addEventListener('mousemove', (event) => {
     mouseX = event.clientX - rect.left - centerX;
     mouseY = event.clientY - rect.top - centerY;
 });
+
