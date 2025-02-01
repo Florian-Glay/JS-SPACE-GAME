@@ -36,6 +36,7 @@ const spaceship = {
     targetOffsetX: 0,
     targetOffsetY: 0,
     boost: 0,
+    currentAngle: 0
 };
 const shipRadius = spaceship.width / 2; // pour les collisions
 
@@ -52,6 +53,13 @@ const spaceshipFrames = [
 let frameIndex = 0;
 const frameDuration = 100; // durée d'une frame en ms
 let lastFrameTimeAnim = 0;
+
+function lerpAngle(current, target, t) {
+    let diff = target - current;
+    // Normaliser la différence pour qu'elle soit comprise entre -PI et PI
+    diff = ((diff + Math.PI) % (2 * Math.PI)) - Math.PI;
+    return current + diff * t;
+}
 
 // -----------------------------------------------------------------
 // Caméra (toujours centrée sur le vaisseau)
@@ -146,7 +154,6 @@ const keys = {
     Space: false
 };
 
-
 // Flag pour empêcher de répéter le boost tant que la barre espace est maintenue
 let spaceBoostReady = true;
 
@@ -192,25 +199,29 @@ document.addEventListener('keyup', keyUp);
 // Fonction de boost : si le vaisseau est proche d'une planète,
 // il reçoit une impulsion pour décrocher.
 function boostIfNearPlanet() {
-    const BOOST_THRESHOLD_FACTOR = 1.2; // seuil = planet.size * BOOST_THRESHOLD_FACTOR
-    for (let planet of planets) {
-        // Le boost est défini ici en fonction de la gravité de la planète
-        const BOOST_MAGNITUDE = planet.gravity/2; // valeur du boost (pixels/s)
-        const dx = spaceship.x - planet.x;
-        const dy = spaceship.y - planet.y;
-        const distance = Math.hypot(dx, dy);
-        // Si le vaisseau est proche (dans le diamètre de la planète, avec une marge)
-        if (distance < planet.size * BOOST_THRESHOLD_FACTOR) {
-            // Calcul de la direction radiale sortante (du centre de la planète vers le vaisseau)
-            const nx = dx; //distance;
-            const ny = dy; //distance;
-            // Application du boost
-            spaceship.boost += BOOST_MAGNITUDE;// * nx;
-            // On arrête dès le premier boost appliqué
-            break;
+    const BOOST_THRESHOLD_FACTOR = 1.1; // seuil = planet.size * BOOST_THRESHOLD_FACTOR
+    if(keys.ArrowRight || keys.KeyD || keys.ArrowLeft || keys.KeyA || keys.ArrowUp || keys.KeyW || keys.ArrowDown || keys.KeyS){
+        for (let planet of planets) {
+            // Le boost est défini ici en fonction de la gravité de la planète
+            const BOOST_MAGNITUDE = planet.gravity/2; // valeur du boost (pixels/s)
+            const dx = spaceship.x - planet.x;
+            const dy = spaceship.y - planet.y;
+            const distance = Math.hypot(dx, dy);
+            // Si le vaisseau est proche (dans le diamètre de la planète, avec une marge)
+            if (distance < planet.size * BOOST_THRESHOLD_FACTOR) {
+                // Calcul de la direction radiale sortante (du centre de la planète vers le vaisseau)
+                const nx = dx; //distance;
+                const ny = dy; //distance;
+                // Application du boost
+                spaceship.boost += BOOST_MAGNITUDE;// * nx;
+                // On arrête dès le premier boost appliqué
+                break;
+            }
         }
     }
+    
 }
+
 
 // -----------------------------------------------------------------
 // Physique réaliste avec intégration temporelle
@@ -249,7 +260,7 @@ function updatePhysics(dt) {
         let dy = planet.y - spaceship.y;
         let distance = Math.hypot(dx, dy);
         const planetRadius = planet.size / 2;
-        const minDistance = planetRadius + shipRadius;
+        const minDistance = planetRadius*1.1 + shipRadius;
         
         if (distance < minDistance) {
             // Collision : repositionnement sur le bord, annulation de la vitesse.
@@ -262,8 +273,20 @@ function updatePhysics(dt) {
             spaceship.y = planet.y - ny * minDistance;
             angle = Math.atan2(spaceship.y - collidingPlanet.y, spaceship.x - collidingPlanet.x);
             if(spaceBoostReady){
-                spaceship.vx = Math.cos(angle)*spaceship.boost;
-                spaceship.vy = Math.sin(angle)*spaceship.boost;
+                if(spaceship.boost > 1){
+                    spaceship.vx += Math.cos(angle)*spaceship.boost;
+                    spaceship.vy += Math.sin(angle)*spaceship.boost;
+                }
+                else{
+                    // Calcul de l'angle relatif actuel
+                    //let angleRel = Math.atan2(spaceship.y - collidingPlanet.y, spaceship.x - collidingPlanet.x);
+                    // Ajout de l'incrément de rotation de la planète
+                    //angleRel += collidingPlanet.rot_speed * dt;
+                    //const minDistance = collidingPlanet.size / 2 + shipRadius;
+                    // Mise à jour de la position pour suivre la rotation
+                    //spaceship.x = collidingPlanet.x + Math.cos(angleRel) * minDistance;
+                    //spaceship.y = collidingPlanet.y + Math.sin(angleRel) * minDistance;
+                }
             }
         } else {
             // Accélération gravitationnelle :
@@ -297,7 +320,7 @@ function updatePhysics(dt) {
         // Sans input : frottement marqué
         spaceship.vx *= 0.98;
         spaceship.vy *= 0.98;
-        offsetSmoothingFactor = 1;  // En mode collision, l'offset n'est pas utilisé
+        offsetSmoothingFactor = 0.1;  // En mode collision, l'offset n'est pas utilisé
     } else {
         spaceship.vx *= 0.999;
         spaceship.vy *= 0.999;
@@ -306,7 +329,6 @@ function updatePhysics(dt) {
     
     // --- 7. Limitation de la vitesse maximale (facultatif)
     let currentSpeed = Math.hypot(spaceship.vx, spaceship.vy);
-    // Exemple (décommenter si souhaité) :
     const maxSpeed = 700;
     if (spaceship.boost < 50 && currentSpeed > maxSpeed) {
         spaceship.vx = (spaceship.vx / currentSpeed) * maxSpeed;
@@ -316,14 +338,32 @@ function updatePhysics(dt) {
     // --- 8. Calcul de l'offset pour l'effet visuel (uniquement si non en collision)
     if (!collidingPlanet) {
         if (currentSpeed > 0) {
-            spaceship.targetOffsetX = (spaceship.vx / currentSpeed) * 20;
-            spaceship.targetOffsetY = (spaceship.vy / currentSpeed) * 20;
+            spaceship.targetOffsetX = (spaceship.vx / currentSpeed) * 50;
+            spaceship.targetOffsetY = (spaceship.vy / currentSpeed) * 50;
         } else {
-            spaceship.targetOffsetX = 0;
+            spaceship.targetOffsetX = 0 ;
             spaceship.targetOffsetY = 0;
         }
         spaceship.offsetX += (spaceship.targetOffsetX - spaceship.offsetX) * offsetSmoothingFactor;
         spaceship.offsetY += (spaceship.targetOffsetY - spaceship.offsetY) * offsetSmoothingFactor;
+    }
+    else{
+        spaceship.targetOffsetX = (spaceship.vx / currentSpeed) * 50;
+        spaceship.targetOffsetY = (spaceship.vy / currentSpeed) * 50;
+        spaceship.offsetX += (0 - spaceship.offsetX) * offsetSmoothingFactor;
+        spaceship.offsetY += (0 - spaceship.offsetY) * offsetSmoothingFactor;
+    }
+
+    // --- 9. Si le vaisseau est attaché à une planète, le faire suivre sa rotation
+    if (spaceship.boost < 5 && collidingPlanet ) {
+        // Calcul de l'angle relatif actuel
+        let angleRel = Math.atan2(spaceship.y - collidingPlanet.y, spaceship.x - collidingPlanet.x);
+        // Ajout de l'incrément de rotation de la planète
+        angleRel += collidingPlanet.rot_speed * dt;
+        const minDistance = collidingPlanet.size / 2 + shipRadius;
+        // Mise à jour de la position pour suivre la rotation
+        spaceship.x = collidingPlanet.x + Math.cos(angleRel) * minDistance;
+        spaceship.y = collidingPlanet.y + Math.sin(angleRel) * minDistance;
     }
 
     // PROTECTION POUR NE PAS DEPASSER LA LIMITE
@@ -373,28 +413,33 @@ function drawSpaceship() {
     
     ctx.save();
     // Le vaisseau est dessiné au centre de l'écran
-    ctx.translate(canvas.width / 2, canvas.height / 2);
+    ctx.translate(canvas.width / 2 + spaceship.offsetX,canvas.height / 2 + spaceship.offsetY); // Position du vaisseau
     
-    // Calcul de l'angle d'orientation :
-    // - Si en collision, l'angle est déterminé par la normale sortante (du centre de la planète vers le vaisseau)
-    // - Sinon, l'angle est déterminé par la direction de la vitesse
-    let angle;
+    // Calcul de l'angle cible (targetAngle)
+    let targetAngle;
     if (collidingPlanet) {
-        angle = Math.atan2(spaceship.y - collidingPlanet.y, spaceship.x - collidingPlanet.x);
+        // Si en collision, l'angle cible est celui de la normale sortante
+        targetAngle = Math.atan2(spaceship.y - collidingPlanet.y, spaceship.x - collidingPlanet.x);
     } else {
         let speed = Math.hypot(spaceship.vx, spaceship.vy);
         if (speed > 0.1) {
-            angle = Math.atan2(spaceship.vy, spaceship.vx);
+            targetAngle = Math.atan2(spaceship.vy, spaceship.vx);
         } else {
-            angle = 0;
+            // Si le vaisseau est quasi immobile, conserver l'angle courant
+            targetAngle = spaceship.currentAngle;
         }
     }
     
-    ctx.rotate(angle);
+    // Interpolation progressive de l'angle courant vers l'angle cible.
+    // Le coefficient (ici 0.1) définit la rapidité de la transition (ajustez-le selon vos besoins).
+    spaceship.currentAngle = lerpAngle(spaceship.currentAngle, targetAngle, 0.05);
+    
+    ctx.rotate(spaceship.currentAngle);
     // Dessiner le sprite centré sur son axe
     ctx.drawImage(spaceshipImage, -spaceshipImage.width / 2, -spaceshipImage.height / 2);
     ctx.restore();
 }
+
 
 // Dessin des étoiles
 function drawStars() {
