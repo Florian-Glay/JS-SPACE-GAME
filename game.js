@@ -119,6 +119,11 @@ class Planet {
         // Coordonnées d'écran en fonction de la caméra
         const screenX = this.x - camera.smoothX + canvas.width / 2;
         const screenY = this.y - camera.smoothY + canvas.height / 2;
+
+        ctx.imageSmoothingEnabled = false;
+        ctx.mozImageSmoothingEnabled = false;
+        ctx.webkitImageSmoothingEnabled = false;
+        ctx.msImageSmoothingEnabled = false;
     
         ctx.save();
         ctx.translate(screenX, screenY);
@@ -136,7 +141,8 @@ class Planet {
 // Nous utilisons ici 9.81 pour chacune des planètes (attention aux unités, ici le gravity est exprimé en "pixels/s²" via un facteur multiplicatif)
 const planets = [
     new Planet(1500, 1300, './img_file/planet1.png', 500, 9810, 0, 0.1),
-    new Planet(-600, -200, './img_file/planet2.png', 150, 1081, Math.PI / 4, 0.2)
+    new Planet(-600, -200, './img_file/planet2.png', 150, 1081, Math.PI / 4, 0.2),
+    new Planet(2000, -1500, './img_file/planet2.png', 700, 100000, Math.PI / 4, 2)
 ];
 
 // -----------------------------------------------------------------
@@ -292,8 +298,11 @@ function updatePhysics(dt) {
             // Accélération gravitationnelle :
             // a = 9.81 * (planetRadius / distance)²
             const a = planet.gravity * (planetRadius / distance) ** 2;
-            totalAx += a * (dx / distance);
-            totalAy += a * (dy / distance);
+            if(a > 100){
+                force = a;
+                totalAx += a * (dx / distance);
+                totalAy += a * (dy / distance);
+            }
         }
     }
     
@@ -329,10 +338,19 @@ function updatePhysics(dt) {
     
     // --- 7. Limitation de la vitesse maximale (facultatif)
     let currentSpeed = Math.hypot(spaceship.vx, spaceship.vy);
-    const maxSpeed = 700;
-    if (spaceship.boost < 50 && currentSpeed > maxSpeed) {
-        spaceship.vx = (spaceship.vx / currentSpeed) * maxSpeed;
-        spaceship.vy = (spaceship.vy / currentSpeed) * maxSpeed;
+    
+    // const maxSpeed = 1000;
+    const maxSpeed = force;
+    if (currentSpeed > maxSpeed) {
+        if(spaceship.boost > 700 ){
+            spaceship.vx = (spaceship.vx / currentSpeed) * maxSpeed;
+            spaceship.vy = (spaceship.vy / currentSpeed) * maxSpeed;
+        }
+        else if(currentSpeed > 700){
+            spaceship.vx = (spaceship.vx / currentSpeed) * 700;
+            spaceship.vy = (spaceship.vy / currentSpeed) * 700;
+        }
+        
     }
     
     // --- 8. Calcul de l'offset pour l'effet visuel (uniquement si non en collision)
@@ -411,6 +429,10 @@ function drawSpaceship() {
     }
     const spaceshipImage = spaceshipFrames[frameIndex];
     
+    ctx.imageSmoothingEnabled = false;
+    ctx.mozImageSmoothingEnabled = false;
+    ctx.webkitImageSmoothingEnabled = false;
+    ctx.msImageSmoothingEnabled = false;
     ctx.save();
     // Le vaisseau est dessiné au centre de l'écran
     ctx.translate(canvas.width / 2 + spaceship.offsetX,canvas.height / 2 + spaceship.offsetY); // Position du vaisseau
@@ -481,6 +503,7 @@ function drawCameraCoordinates() {
     ctx.textAlign = 'right';
     ctx.fillText(`Camera: (${Math.round(camera.smoothX)}, ${Math.round(camera.smoothY)})`, canvas.width - 10, 30);
     ctx.fillText(`Ship: (${Math.round(spaceship.x)}, ${Math.round(spaceship.y)})`, canvas.width - 10, 60);
+    ctx.fillText(`Ship_boost: ${Math.round(spaceship.boost)}, Ship_vel: ${Math.round(spaceship.vx)}`, canvas.width - 10, 90);
 }
 
 // (Optionnel) Dessiner une croix rouge au centre
