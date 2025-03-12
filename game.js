@@ -61,6 +61,32 @@ function lerpAngle(current, target, t) {
     return current + diff * t;
 }
 
+function slerpAngle(current, target, t) {
+    let diff = target - current;
+
+    // Normaliser la différence pour qu'elle soit comprise entre -PI et PI
+    diff = ((diff + Math.PI) % (2 * Math.PI)) - Math.PI;
+
+    // Utiliser une interpolation exponentielle pour éviter une brusque inversion
+    return current + diff * (1 - Math.exp(-t * 10));
+}
+
+function lerpAngleSafe(current, target, t) {
+    let sinCurrent = Math.sin(current);
+    let cosCurrent = Math.cos(current);
+    let sinTarget = Math.sin(target);
+    let cosTarget = Math.cos(target);
+
+    // Effectuer une interpolation linéaire sur les composantes sin et cos
+    let sinInterp = sinCurrent + (sinTarget - sinCurrent) * t;
+    let cosInterp = cosCurrent + (cosTarget - cosCurrent) * t;
+
+    // Recalculer l'angle pour rester toujours sur le bon cercle trigonométrique
+    return Math.atan2(sinInterp, cosInterp);
+}
+
+
+
 // -----------------------------------------------------------------
 // Caméra (toujours centrée sur le vaisseau)
 const camera = {
@@ -142,7 +168,7 @@ class Planet {
 const planets = [
     new Planet(1500, 1300, './img_file/planet1.png', 500, 9810, 0, 0.1),
     new Planet(-600, -200, './img_file/planet2.png', 150, 1081, Math.PI / 4, 0.2),
-    new Planet(2000, -1500, './img_file/planet2.png', 700, 100000, Math.PI / 4, 2)
+    new Planet(2000, -1500, './img_file/planet2.png', 700, 5000, Math.PI / 4, 1.5)
 ];
 
 // -----------------------------------------------------------------
@@ -209,7 +235,7 @@ function boostIfNearPlanet() {
     if(keys.ArrowRight || keys.KeyD || keys.ArrowLeft || keys.KeyA || keys.ArrowUp || keys.KeyW || keys.ArrowDown || keys.KeyS){
         for (let planet of planets) {
             // Le boost est défini ici en fonction de la gravité de la planète
-            const BOOST_MAGNITUDE = planet.gravity/2; // valeur du boost (pixels/s)
+            const BOOST_MAGNITUDE = planet.gravity; // valeur du boost (pixels/s)
             const dx = spaceship.x - planet.x;
             const dy = spaceship.y - planet.y;
             const distance = Math.hypot(dx, dy);
@@ -275,23 +301,13 @@ function updatePhysics(dt) {
             if (distance === 0) { dx = 1; dy = 0; distance = 1; }
             const nx = dx / distance;
             const ny = dy / distance;
-            spaceship.x = planet.x - nx * minDistance;
-            spaceship.y = planet.y - ny * minDistance;
+            spaceship.x = collidingPlanet.x - nx * minDistance;
+            spaceship.y = collidingPlanet.y - ny * minDistance;
             angle = Math.atan2(spaceship.y - collidingPlanet.y, spaceship.x - collidingPlanet.x);
             if(spaceBoostReady){
                 if(spaceship.boost > 1){
                     spaceship.vx += Math.cos(angle)*spaceship.boost;
                     spaceship.vy += Math.sin(angle)*spaceship.boost;
-                }
-                else{
-                    // Calcul de l'angle relatif actuel
-                    //let angleRel = Math.atan2(spaceship.y - collidingPlanet.y, spaceship.x - collidingPlanet.x);
-                    // Ajout de l'incrément de rotation de la planète
-                    //angleRel += collidingPlanet.rot_speed * dt;
-                    //const minDistance = collidingPlanet.size / 2 + shipRadius;
-                    // Mise à jour de la position pour suivre la rotation
-                    //spaceship.x = collidingPlanet.x + Math.cos(angleRel) * minDistance;
-                    //spaceship.y = collidingPlanet.y + Math.sin(angleRel) * minDistance;
                 }
             }
         } else {
@@ -436,7 +452,13 @@ function drawSpaceship() {
     ctx.save();
     // Le vaisseau est dessiné au centre de l'écran
     ctx.translate(canvas.width / 2 + spaceship.offsetX,canvas.height / 2 + spaceship.offsetY); // Position du vaisseau
-    
+    ctx.rotate(spaceship.currentAngle);
+    // Dessiner le sprite centré sur son axe
+    ctx.drawImage(spaceshipImage, -spaceshipImage.width / 2, -spaceshipImage.height / 2);
+    ctx.restore();
+}
+
+function updateShipRotate(){
     // Calcul de l'angle cible (targetAngle)
     let targetAngle;
     if (collidingPlanet) {
@@ -454,12 +476,10 @@ function drawSpaceship() {
     
     // Interpolation progressive de l'angle courant vers l'angle cible.
     // Le coefficient (ici 0.1) définit la rapidité de la transition (ajustez-le selon vos besoins).
-    spaceship.currentAngle = lerpAngle(spaceship.currentAngle, targetAngle, 0.05);
-    
-    ctx.rotate(spaceship.currentAngle);
-    // Dessiner le sprite centré sur son axe
-    ctx.drawImage(spaceshipImage, -spaceshipImage.width / 2, -spaceshipImage.height / 2);
-    ctx.restore();
+    //spaceship.currentAngle = lerpAngle(spaceship.currentAngle, targetAngle, 0.05);
+    //spaceship.currentAngle = slerpAngle(spaceship.currentAngle, targetAngle, 0.05);
+    spaceship.currentAngle = lerpAngleSafe(spaceship.currentAngle, targetAngle, 0.08);
+
 }
 
 
@@ -486,6 +506,25 @@ function drawStars() {
 function drawPlanets() {
     planets.forEach(planet => planet.draw(ctx, camera));
 }
+
+
+// Update du score
+function increaseScoreOnStarCollision() {
+    stars.forEach((star, index) => {
+        const dx = Math.abs(spaceship.x - spaceship.offsetX*1.5 - star.x);
+        const dy = Math.abs(spaceship.y - spaceship.offsetY*1.5 - star.y);
+        let distance = Math.hypot(dx, dy);
+        const starRadius = star.size / 2;
+        const minDistance = starRadius + shipRadius;
+
+        if (distance < minDistance) {
+            stars.splice(index, 1); // Supprime l'étoile touchée
+            score++; // Augmente le score
+            createStar(); // Remplace l'étoile par une nouvelle
+        }
+    });
+}
+
 
 // Affichage du score (ou d'autres infos)
 let score = 0;
@@ -535,6 +574,8 @@ function showMainMenu() {
     canvas.addEventListener('click', startGame, { once: true });
 }
 
+
+
 function showPauseMenu() {
     ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -569,6 +610,8 @@ function update() {
         updatePhysics(dt);
         updateCamera(dt);
         updatePlanets(dt);
+        updateShipRotate();
+        increaseScoreOnStarCollision();
         
         drawBackground();
         drawStars();
